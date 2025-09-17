@@ -1,4 +1,4 @@
-
+from contextlib import contextmanager
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
@@ -28,13 +28,13 @@ class ConversationRepository:
         Base.metadata.create_all(bind=self.engine)
         print(f"Tabelas criadas no banco {self.database.database_type}")
 
-    def _get_session(self) -> Session:
+    def get_session(self) -> Session:
         """Retorna uma sessão do banco de dados"""
         return self.SessionLocal()
-    
+
     def _cleanup_expired_conversations(self, client_hub: str = None):
         """Limpa conversas que expiraram por timeout"""
-        with self._get_session() as session:
+        with self.get_session() as session:
             query = session.query(Conversation).filter(
                 Conversation.status == ConversationStatus.ACTIVE
             )
@@ -54,50 +54,12 @@ class ConversationRepository:
                 session.commit()
                 print(f"Closed {expired_count} expired conversations")
 
-    def get_or_create_conversation(self, client_hub: str, channel: str = "whatsapp", timeout_minutes: int = None) -> Tuple[Conversation, bool]:
-        """
-        Obtém uma conversa ativa ou cria uma nova
-        Retorna (conversation, is_new)
-        """
-        # Primeiro, verificar e limpar conversas expiradas
-
-        self._cleanup_expired_conversations(client_hub)
-            
-        with self._get_session() as session:
-            # Buscar conversa ativa
-            active_conversation = session.query(Conversation).filter(
-                Conversation.client_hub == client_hub,
-                Conversation.status == ConversationStatus.ACTIVE
-            ).first()
-            
-            if active_conversation and not active_conversation.is_expired():
-                return active_conversation, False
-            
-            # Se a conversa ativa expirou, encerra ela
-            if active_conversation and active_conversation.is_expired():
-                active_conversation.close_conversation(ConversationStatus.IDLE_TIMEOUT)
-                self.session.commit()
-            
-            # Criar nova conversa
-            timeout = timeout_minutes or self.config.DEFAULT_IDLE_TIMEOUT_MINUTES
-            new_conversation = Conversation(
-                client_hub=client_hub,
-                idle_timeout_minutes=timeout,
-                channel=channel
-            )
-            
-            session.add(new_conversation)
-            session.commit()
-            
-            return new_conversation, True
-        
-    # ALTERNATIVA MAIS SIMPLES: Retornar apenas o UUID
     def get_or_create_conversation_uuid(self, client_hub: str, channel: str = "whatsapp", timeout_minutes: int = None) -> Tuple[str, bool]:
         """
-        Versão simplificada que retorna apenas o UUID da conversa
-        Retorna (conversation_uuid, is_new)
+        Obtém uma conversa ativa ou cria uma nova
+        Retorna (conversation_uuid, is_new) seguindo o padrão do KanbanRepository
         """
-        with self._get_session() as session:
+        with self.get_session() as session:
             # Primeiro, verificar e limpar conversas expiradas
             self._cleanup_expired_conversations(client_hub)
             
@@ -125,17 +87,21 @@ class ConversationRepository:
             
             session.add(new_conversation)
             session.commit()
+            session.refresh(new_conversation)
             
             return str(new_conversation.conversation_uuid), True
     
-    def add_message(self, conversation_uuid: uuid.UUID, message_data: MessageData) -> Tuple[Message, bool]:
+    def add_message(self, conversation_uuid: str, message_data: MessageData) -> Tuple[dict, bool]:
         """
         Adiciona uma nova mensagem à conversa
-        Retorna (message, conversation_was_closed)
+        Retorna (message_dict, conversation_was_closed) seguindo padrão do KanbanRepository
         """
-        with self._get_session() as session:
+        with self.get_session() as session:
+            # Converter string UUID para objeto UUID
+            uuid_obj = uuid.UUID(conversation_uuid) if isinstance(conversation_uuid, str) else conversation_uuid
+            
             conversation = session.query(Conversation).filter(
-                Conversation.conversation_uuid == conversation_uuid
+                Conversation.conversation_uuid == uuid_obj
             ).first()
             
             if not conversation:
@@ -151,7 +117,7 @@ class ConversationRepository:
             
             # Criar mensagem
             message = Message(
-                conversation_uuid=conversation_uuid,
+                conversation_uuid=uuid_obj,
                 type=MessageType(message_data.type),
                 message=message_data.message,
                 timestamp=message_data.timestamp,
@@ -177,11 +143,26 @@ class ConversationRepository:
                 conversation_closed = True
             
             session.commit()
-            return message, conversation_closed
+            session.refresh(message)
+            
+            # Retornar dados serializados como no KanbanRepository
+            message_dict = {
+                "id": str(message.id),
+                "conversation_uuid": str(message.conversation_uuid),
+                "type": message.type.value,
+                "message": message.message,
+                "timestamp": message.timestamp,
+                "owner": message.owner.value,
+                "channel": message.channel,
+                "meta": message.meta,
+                "closes_conversation": message.closes_conversation
+            }
+            
+            return message_dict, conversation_closed
     
-    def get_conversation_history(self, client_hub: str, limit: int = 50, include_closed: bool = False) -> List[Message]:
-        """Obtém o histórico de mensagens, incluindo conversas fechadas se solicitado"""
-        with self._get_session() as session:
+    def get_conversation_history(self, client_hub: str, limit: int = 50, include_closed: bool = False) -> List[dict]:
+        """Obtém o histórico de mensagens, retornando dados serializados"""
+        with self.get_session() as session:
             query = session.query(Conversation).filter(
                 Conversation.client_hub == client_hub
             )
@@ -196,25 +177,54 @@ class ConversationRepository:
                 messages = session.query(Message).filter(
                     Message.conversation_uuid == conv.conversation_uuid
                 ).order_by(Message.timestamp.desc()).limit(limit).all()
-                all_messages.extend(messages)
+                
+                for message in messages:
+                    message_dict = {
+                        "id": str(message.id),
+                        "conversation_uuid": str(message.conversation_uuid),
+                        "type": message.type.value,
+                        "message": message.message,
+                        "timestamp": message.timestamp,
+                        "owner": message.owner.value,
+                        "channel": message.channel,
+                        "meta": message.meta,
+                        "closes_conversation": message.closes_conversation
+                    }
+                    all_messages.append(message_dict)
             
             # Ordenar por timestamp e limitar
-            all_messages.sort(key=lambda x: x.timestamp)
+            all_messages.sort(key=lambda x: x['timestamp'])
             return all_messages[-limit:] if limit else all_messages
     
-    def get_active_conversation(self, client_hub: str) -> Optional[Conversation]:
-        """Retorna a conversa ativa para um cliente, se existir"""
-        with self._get_session() as session:
-            return session.query(Conversation).filter(
+    def get_active_conversation_data(self, client_hub: str) -> Optional[dict]:
+        """Retorna dados da conversa ativa para um cliente, se existir"""
+        with self.get_session() as session:
+            conversation = session.query(Conversation).filter(
                 Conversation.client_hub == client_hub,
                 Conversation.status == ConversationStatus.ACTIVE
             ).first()
+            
+            if not conversation:
+                return None
+            
+            return {
+                "conversation_uuid": str(conversation.conversation_uuid),
+                "client_hub": conversation.client_hub,
+                "channel": conversation.channel,
+                "created_at": conversation.created_at,
+                "last_activity_at": conversation.last_activity_at,
+                "status": conversation.status.value,
+                "idle_timeout_minutes": conversation.idle_timeout_minutes
+            }
     
     def force_close_conversation(self, client_hub: str, reason: str = "Fechada manualmente") -> bool:
         """Força o encerramento de uma conversa ativa"""
-        conversation = self.get_active_conversation(client_hub)
-
-        with self._get_session() as session:
+        with self.get_session() as session:
+            conversation = session.query(Conversation).filter(
+                Conversation.client_hub == client_hub,
+                Conversation.status == ConversationStatus.ACTIVE
+            ).first()
+            
             if conversation:
                 conversation.close_conversation(ConversationStatus.USER_CLOSED, reason)
                 session.commit()
@@ -223,9 +233,12 @@ class ConversationRepository:
     
     def extend_conversation_timeout(self, client_hub: str, additional_minutes: int) -> bool:
         """Estende o timeout de uma conversa ativa"""
-        conversation = self.get_active_conversation(client_hub)
-
-        with self._get_session() as session:    
+        with self.get_session() as session:
+            conversation = session.query(Conversation).filter(
+                Conversation.client_hub == client_hub,
+                Conversation.status == ConversationStatus.ACTIVE
+            ).first()
+            
             if conversation:
                 conversation.idle_timeout_minutes += additional_minutes
                 conversation.last_activity_at = datetime.now()
@@ -235,7 +248,7 @@ class ConversationRepository:
     
     def get_conversation_stats(self, client_hub: str = None) -> Dict[str, Any]:
         """Obtém estatísticas das conversas"""
-        with self._get_session() as session:
+        with self.get_session() as session:
             base_query = session.query(Conversation)
             if client_hub:
                 base_query = base_query.filter(Conversation.client_hub == client_hub)
@@ -259,7 +272,7 @@ class ConversationRepository:
     
     def cleanup_old_conversations(self, days_old: int = 30):
         """Remove conversas antigas definitivamente"""
-        with self._get_session() as session:
+        with self.get_session() as session:
             cutoff_date = datetime.now() - timedelta(days=days_old)
             
             old_conversations = session.query(Conversation).filter(

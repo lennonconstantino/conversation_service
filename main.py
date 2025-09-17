@@ -12,7 +12,10 @@ def main():
     service = ConversationService(repository)
     weblab = Weblab(service)
 
-    weblab.receive_and_respond_message("weblab", "teste_hub", "Hello!!!", "lennon", "text")
+    user = "lennon"
+    response = weblab.receive_and_respond_message("weblab", "teste_hub", "Hello!!!", user, "text")
+
+    print(f"Processed conversation for user: {user}, response: {response}")
 
 if __name__ == "__main__":
     main()
