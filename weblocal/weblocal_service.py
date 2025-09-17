@@ -1,17 +1,22 @@
 import time
+import logging
 from typing import Callable, Dict, Optional
 from channel.channel import Channel
 from weblocal.helpers import Helpers
 from weblocal.models import Payload, Message, Audio, Image, User
 from conversation.service import ConversationService
 from conversation.models import MessageData, MessageOwner
+from config.settings import settings
+
+# Configurar logging
+logger = logging.getLogger(__name__)
 
 class WeblocalService(Channel):
     """Serviço para processar mensagens locais similar ao WhatsApp webhook"""
     
     def __init__(self, conversation_service: ConversationService):
         self.conversation_service = conversation_service
-        self.MESSAGE_EXPIRY_MINUTES = 5
+        self.MESSAGE_EXPIRY_MINUTES = settings.MESSAGE_EXPIRY_MINUTES
         
     def is_message_too_old(self, message_timestamp: str, max_age_minutes: int = None) -> bool:
         """
@@ -55,13 +60,28 @@ class WeblocalService(Channel):
         Mock para autenticação local - você pode implementar sua lógica aqui
         Por enquanto retorna um usuário padrão
         """
-        # TODO: Implementar sua lógica de autenticação local
-        return User(
-            id=int(user_id.replace("user_", "")) if "user_" in user_id else 1,
-            first_name="Local",
-            last_name="User",
-            role="basic"
-        )
+        try:
+            # Tentar extrair ID numérico do user_id
+            if "user_" in user_id:
+                user_id_num = int(user_id.replace("user_", ""))
+            else:
+                # Se não tem prefixo user_, usar hash do string para gerar ID único
+                user_id_num = abs(hash(user_id)) % 1000000
+            
+            return User(
+                id=user_id_num,
+                first_name="Local",
+                last_name="User",
+                role="basic"
+            )
+        except (ValueError, TypeError):
+            # Fallback para ID padrão se conversão falhar
+            return User(
+                id=1,
+                first_name="Local",
+                last_name="User",
+                role="basic"
+            )
 
     def transcribe_audio(self, audio: Audio) -> str:
         """
@@ -134,9 +154,9 @@ class WeblocalService(Channel):
         )
         
         if is_new:
-            print(f"Nova conversa criada para usuário {user.first_name} {user.last_name}")
+            logger.info(f"Nova conversa criada para usuário {user.first_name} {user.last_name}")
         
-        print(f"Mensagem salva: {message[:50]}...")
+        logger.debug(f"Mensagem salva: {message[:50]}...")
         return conversation_uuid, message_dict
     
     def save_response(self, user: User, owner: MessageOwner, channel: str, client_hub: str, response: str, message_type: str, agent_type: str = "local_agent" , meta: Dict = None):
@@ -167,80 +187,90 @@ class WeblocalService(Channel):
             message_data=message_data
         )
         
-        print(f"Resposta do agente salva: {response[:50]}...")
+        logger.debug(f"Resposta do agente salva: {response[:50]}...")
         return message_dict
     
-    def respond_and_send_message(self, payload: Payload, channel: str = "local") -> Dict: # , function: Callable = None
+    def respond_and_send_message(self, payload: Payload, channel: str = "local") -> Dict:
         """
         Processa uma mensagem local
         """
         start_time = time.time()
         
-        # Parse da mensagem
-        message = self.parse_message(payload)
-        if not message:
-            return {"status": "no_message", "error": "No message found in payload"}
-        
-        # Verificar se a mensagem não é muito antiga
-        if self.is_message_too_old(message.timestamp):
+        try:
+            # Parse da mensagem
+            message = self.parse_message(payload)
+            if not message:
+                logger.warning("No message found in payload")
+                return {"status": "no_message", "error": "No message found in payload"}
+            
+            # Verificar se a mensagem não é muito antiga
+            if self.is_message_too_old(message.timestamp):
+                logger.warning(f"Message too old: {message.timestamp}")
+                return {
+                    "status": "expired", 
+                    "error": "Message is too old to be processed",
+                    "max_age_minutes": self.MESSAGE_EXPIRY_MINUTES
+                }
+            
+            # Obter usuário
+            user = self.get_user_by_id(message.from_)
+            if not user:
+                logger.warning(f"User not found for ID: {message.from_}")
+                return {"status": "user_not_found", "error": "User not found"}
+            
+            # Extrair conteúdo da mensagem
+            message_content = self.extract_message_content(message)
+            if not message_content:
+                logger.warning("No message content found")
+                return {"status": "no_content", "error": "No message content found"}
+            
+            logger.info(f"Mensagem recebida de {user.first_name} {user.last_name}: {message_content}")
+            
+            # Salvar mensagem do usuário
+            conversation_uuid, user_message_dict = self.save_request(
+                user=user,
+                owner=MessageOwner.USER,
+                channel=channel,
+                client_hub="todo",
+                message=message_content,
+                message_type=message.type,
+                meta={"original_message_id": message.id}
+            )
+            
+            # Gerar resposta
+            response = Helpers.generate_response(message_content, user)
+            
+            # Salvar resposta do agente
+            agent_message_dict = self.save_response(
+                user=user,
+                owner=MessageOwner.AGENT,
+                channel=channel,
+                client_hub="todo",
+                message_type=message.type,
+                response=response,
+                meta={"response_to": message.id}
+            )
+            
+            processing_time = round((time.time() - start_time) * 1000, 2)
+            
+            logger.info(f"Processed message for user {user.first_name} {user.last_name} in {processing_time}ms")
+            
             return {
-                "status": "expired", 
-                "error": "Message is too old to be processed",
-                "max_age_minutes": self.MESSAGE_EXPIRY_MINUTES
+                "status": "processed",
+                "user": {
+                    "id": user.id,
+                    "name": f"{user.first_name} {user.last_name}"
+                },
+                "conversation_uuid": conversation_uuid,
+                "user_message": user_message_dict,
+                "agent_response": agent_message_dict,
+                "response_text": response,
+                "processing_time_ms": processing_time
             }
-        
-        # Obter usuário
-        user = self.get_user_by_id(message.from_)
-        if not user:
-            return {"status": "user_not_found", "error": "User not found"}
-        
-        # Extrair conteúdo da mensagem
-        message_content = self.extract_message_content(message)
-        if not message_content:
-            return {"status": "no_content", "error": "No message content found"}
-        
-        print(f"Mensagem recebida de {user.first_name} {user.last_name}: {message_content}")
-        
-        # Salvar mensagem do usuário
-        conversation_uuid, user_message_dict = self.save_request(
-            user=user,
-            owner=MessageOwner.USER,
-            channel=channel,
-            client_hub="todo",
-            message=message_content,
-            message_type=message.type,
-            meta={"original_message_id": message.id}
-        )
-        
-        #
-        # Gerar resposta sem LLM
-        # 
-        response = Helpers.generate_response(message_content, user)
-        
-        #
-        # Salvar resposta do agente fake
-        # 
-        agent_message_dict = self.save_response(
-            user=user,
-            owner=MessageOwner.AGENT,
-            channel=channel,
-            client_hub="todo",
-            message_type=message.type,
-            response=response,
-            meta={"response_to": message.id}
-        )
-        
-        processing_time = round((time.time() - start_time) * 1000, 2)
-        
-        return {
-            "status": "processed",
-            "user": {
-                "id": user.id,
-                "name": f"{user.first_name} {user.last_name}"
-            },
-            "conversation_uuid": conversation_uuid,
-            "user_message": user_message_dict,
-            "agent_response": agent_message_dict,
-            "response_text": response,
-            "processing_time_ms": processing_time
-        }
+            
+        except ValueError as e:
+            logger.error(f"Validation error: {e}")
+            return {"status": "error", "message": str(e)}
+        except Exception as e:
+            logger.error(f"Unexpected error processing message: {e}", exc_info=True)
+            return {"status": "error", "message": "Internal server error"}

@@ -1,63 +1,98 @@
+import logging
+import sys
+from pathlib import Path
+
+# Adicionar o diretório raiz ao path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 from weblocal.builders import PayloadBuilder
+from weblocal.dependencies import WeblocalServiceFactory
 from weblocal.weblocal_service import WeblocalService
-from conversation.db import DatabaseConfig
-from conversation.repository import ConversationRepository
-from conversation.service import ConversationService
+from weblocal.models import User
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 def teste_simples():
-    print()
+    """Teste simples de uma mensagem"""
+    logger.info("=== Teste Simples ===")
+    
+    try:
+        # Usar factory para obter serviço
+        message_service = WeblocalServiceFactory.get_weblocal_service()
+        
+        user = "user_lennon"
+        text_payload = PayloadBuilder.create_text_payload(
+            user_id=user,
+            message_text="Olá! Como você está?"
+        )
 
-    db = DatabaseConfig("sqlite", db_path="conversations.db")
-    repository = ConversationRepository(db)
-    conversation = ConversationService(repository)
-    message_service = WeblocalService(conversation)
-
-    user = "lennon"
-    text_payload = PayloadBuilder.create_text_payload(
-        user_id=user,
-        message_text="Olá! Como você está?"
-    )
-
-    response = message_service.respond_and_send_message(text_payload)
-
-    print(f"Processed conversation for user: {user}, response: {response}")
+        response = message_service.respond_and_send_message(text_payload)
+        
+        if response['status'] == 'processed':
+            logger.info(f"✅ Processed conversation for user: {user}")
+            logger.info(f"Response: {response['response_text']}")
+            logger.info(f"Processing time: {response['processing_time_ms']}ms")
+        else:
+            logger.error(f"❌ Error processing message: {response.get('error', 'Unknown error')}")
+            
+    except Exception as e:
+        logger.error(f"❌ Teste simples falhou: {e}", exc_info=True)
 
 def teste_completo():
-    # Configurar o banco de dados e serviços
-    db_config = DatabaseConfig("sqlite", db_path="conversations.db")
-    repository = ConversationRepository(db_config)
-    conversation = ConversationService(repository)
-    weblocal = WeblocalService(conversation)
+    """Teste completo com múltiplos cenários"""
+    logger.info("=== Teste Completo - Sistema de Conversação Local ===")
     
-    print("=== Sistema de Conversação Local ===\n")
+    try:
+        # Usar factory para obter serviço
+        weblocal = WeblocalServiceFactory.get_weblocal_service()
+        conversation_service = WeblocalServiceFactory.get_conversation_service()
+        
+        # Executar todos os testes
+        _teste_mensagem_texto(weblocal)
+        _teste_segunda_mensagem(weblocal)
+        _teste_mensagem_audio(weblocal)
+        _teste_mensagem_imagem(weblocal)
+        _teste_novo_usuario(weblocal)
+        _teste_historico_conversa(weblocal)
+        _teste_estatisticas(conversation_service)
+        
+        logger.info("✅ Todos os testes completos executados com sucesso!")
+        
+    except Exception as e:
+        logger.error(f"❌ Teste completo falhou: {e}", exc_info=True)
+
+def _teste_mensagem_texto(weblocal):
+    """Teste 1: Mensagem de texto"""
+    logger.info("1. Enviando mensagem de texto...")
     
-    # Exemplo 1: Mensagem de texto
-    print("1. Enviando mensagem de texto...")
     text_payload = PayloadBuilder.create_text_payload(
         user_id="user_123",
         message_text="Olá! Como você está?"
     )
     
     result = weblocal.respond_and_send_message(text_payload)
-    print(f"Status: {result['status']}")
-    print(f"Resposta: {result.get('response_text', 'N/A')}")
-    print(f"Tempo: {result.get('processing_time_ms', 0)}ms\n")
+    _log_result("Mensagem de texto", result)
+
+def _teste_segunda_mensagem(weblocal):
+    """Teste 2: Segunda mensagem do mesmo usuário"""
+    logger.info("2. Enviando segunda mensagem...")
     
-    # Exemplo 2: Outra mensagem do mesmo usuário
-    print("2. Enviando segunda mensagem...")
     text_payload2 = PayloadBuilder.create_text_payload(
         user_id="user_123",
         message_text="Preciso de ajuda com um problema técnico"
     )
     
     result2 = weblocal.respond_and_send_message(text_payload2)
-    print(f"Status: {result2['status']}")
-    print(f"Resposta: {result2.get('response_text', 'N/A')}")
-    print(f"UUID da conversa: {result2.get('conversation_uuid', 'N/A')}\n")
+    _log_result("Segunda mensagem", result2)
+
+def _teste_mensagem_audio(weblocal):
+    """Teste 3: Mensagem de áudio"""
+    logger.info("3. Enviando mensagem de áudio...")
     
-    # Exemplo 3: Mensagem de áudio (mock)
-    print("3. Enviando mensagem de áudio...")
     audio_payload = PayloadBuilder.create_audio_payload(
         user_id="user_123",
         audio_id="audio_456",
@@ -65,11 +100,12 @@ def teste_completo():
     )
     
     result3 = weblocal.respond_and_send_message(audio_payload)
-    print(f"Status: {result3['status']}")
-    print(f"Resposta: {result3.get('response_text', 'N/A')}\n")
+    _log_result("Mensagem de áudio", result3)
+
+def _teste_mensagem_imagem(weblocal):
+    """Teste 4: Mensagem de imagem"""
+    logger.info("4. Enviando mensagem de imagem...")
     
-    # Exemplo 4: Mensagem de imagem (mock)
-    print("4. Enviando mensagem de imagem...")
     image_payload = PayloadBuilder.create_image_payload(
         user_id="user_123",
         image_id="image_789",
@@ -77,83 +113,161 @@ def teste_completo():
     )
     
     result4 = weblocal.respond_and_send_message(image_payload)
-    print(f"Status: {result4['status']}")
-    print(f"Resposta: {result4.get('response_text', 'N/A')}\n")
+    _log_result("Mensagem de imagem", result4)
+
+def _teste_novo_usuario(weblocal):
+    """Teste 5: Novo usuário"""
+    logger.info("5. Mensagem de novo usuário...")
     
-    # Exemplo 5: Novo usuário
-    print("5. Mensagem de novo usuário...")
     new_user_payload = PayloadBuilder.create_text_payload(
         user_id="user_456",
         message_text="Primeira mensagem de um novo usuário!"
     )
     
     result5 = weblocal.respond_and_send_message(new_user_payload)
-    print(f"Status: {result5['status']}")
-    print(f"Nova conversa: {result5.get('conversation_uuid', 'N/A')}")
-    print(f"Resposta: {result5.get('response_text', 'N/A')}\n")
+    _log_result("Novo usuário", result5)
+
+def _teste_historico_conversa(weblocal):
+    """Teste 6: Histórico de conversa"""
+    logger.info("6. Verificando histórico da conversa...")
     
-    # Exemplo 6: Verificar histórico de conversação
-    print("6. Verificando histórico da conversa...")
-    from weblocal.models import User
     user = User(id=123, first_name="Local", last_name="User")
     context = weblocal.get_conversation_context(user, limit=5)
-    print(f"Contexto da conversa:\n{context}\n")
+    logger.info(f"Contexto da conversa:\n{context}")
+
+def _teste_estatisticas(conversation_service):
+    """Teste 7: Estatísticas"""
+    logger.info("7. Estatísticas das conversas...")
     
-    # Exemplo 7: Estatísticas das conversas
-    print("7. Estatísticas das conversas...")
-    stats = conversation.get_conversation_stats()
-    print(f"Total de conversas: {stats['total_conversations']}")
-    print(f"Conversas ativas: {stats['active_conversations']}")
-    print(f"Média de mensagens: {stats['average_messages_per_conversation']}")
+    stats = conversation_service.get_conversation_stats()
+    logger.info(f"Total de conversas: {stats['total_conversations']}")
+    logger.info(f"Conversas ativas: {stats['active_conversations']}")
+    logger.info(f"Média de mensagens: {stats['average_messages_per_conversation']}")
+
+def _log_result(test_name: str, result: dict):
+    """Helper para logar resultados de teste"""
+    if result['status'] == 'processed':
+        logger.info(f"✅ {test_name}: {result['response_text']} ({result['processing_time_ms']}ms)")
+    else:
+        logger.error(f"❌ {test_name} falhou: {result.get('error', 'Unknown error')}")
 
 def interactive_chat():
-    """Função para chat interativo no terminal"""
-    db_config = DatabaseConfig("sqlite", db_path="interactive_chat.db")
-    repository = ConversationRepository(db_config)
-    conversation = ConversationService(repository)
-    weblocal = WeblocalService(conversation)
-    
-    print("=== Chat Interativo Local ===")
+    """Chat interativo no terminal"""
+    logger.info("=== Chat Interativo Local ===")
     print("Digite 'quit' para sair")
     print("Digite 'stats' para ver estatísticas")
-    print("Digite 'history' para ver histórico\n")
+    print("Digite 'history' para ver histórico")
+    print("Digite 'help' para ver comandos disponíveis\n")
     
-    user_id = input("Digite seu ID de usuário (ex: user_123): ")
+    try:
+        # Usar factory com banco específico para chat interativo
+        weblocal = WeblocalServiceFactory.get_weblocal_service("interactive_chat.db")
+        conversation_service = WeblocalServiceFactory.get_conversation_service("interactive_chat.db")
+        
+        user_id = input("Digite seu ID de usuário (ex: user_123): ").strip()
+        if not user_id:
+            user_id = "user_interactive"
+        
+        logger.info(f"Chat iniciado para usuário: {user_id}")
+        
+        while True:
+            user_input = input(f"\n[{user_id}]: ").strip()
+            
+            if user_input.lower() == 'quit':
+                print("Tchau!")
+                break
+            elif user_input.lower() == 'help':
+                _show_help()
+                continue
+            elif user_input.lower() == 'stats':
+                _show_stats(conversation_service)
+                continue
+            elif user_input.lower() == 'history':
+                _show_history(weblocal, user_id)
+                continue
+            
+            if not user_input:
+                continue
+                
+            # Processar mensagem
+            payload = PayloadBuilder.create_text_payload(user_id, user_input)
+            result = weblocal.respond_and_send_message(payload)
+            
+            if result['status'] == 'processed':
+                print(f"🤖 Agente: {result['response_text']}")
+                logger.info(f"Message processed: {result['processing_time_ms']}ms")
+            else:
+                print(f"❌ Erro: {result.get('error', 'Unknown error')}")
+                logger.error(f"Error processing message: {result.get('error')}")
+                
+    except KeyboardInterrupt:
+        print("\n\nChat interrompido pelo usuário.")
+        logger.info("Chat interrompido pelo usuário")
+    except Exception as e:
+        logger.error(f"Erro no chat interativo: {e}", exc_info=True)
+        print(f"❌ Erro: {e}")
+
+def _show_help():
+    """Mostra comandos disponíveis"""
+    print("\n📋 Comandos disponíveis:")
+    print("  quit     - Sair do chat")
+    print("  stats    - Ver estatísticas das conversas")
+    print("  history  - Ver histórico da conversa")
+    print("  help     - Mostrar esta ajuda")
+
+def _show_stats(conversation_service):
+    """Mostra estatísticas"""
+    try:
+        stats = conversation_service.get_conversation_stats()
+        print(f"\n📊 Estatísticas:")
+        for key, value in stats.items():
+            print(f"  {key}: {value}")
+    except Exception as e:
+        print(f"❌ Erro ao obter estatísticas: {e}")
+
+def _show_history(weblocal, user_id):
+    """Mostra histórico da conversa"""
+    try:
+        user_id_num = int(user_id.replace("user_", "")) if "user_" in user_id else 1
+        user = User(id=user_id_num, first_name="Interactive", last_name="User")
+        context = weblocal.get_conversation_context(user, limit=10)
+        print(f"\n📝 Histórico:\n{context}")
+    except Exception as e:
+        print(f"❌ Erro ao obter histórico: {e}")
+
+def main():
+    """Função principal com menu de opções"""
+    print("🚀 Weblocal Tester - Sistema de Conversação Local")
+    print("=" * 50)
+    print("1. Teste Simples")
+    print("2. Teste Completo")
+    print("3. Chat Interativo")
+    print("4. Sair")
+    print("=" * 50)
     
     while True:
-        user_input = input(f"\n[{user_id}]: ").strip()
-        
-        if user_input.lower() == 'quit':
-            print("Tchau!")
-            break
-        elif user_input.lower() == 'stats':
-            stats = conversation.get_conversation_stats()
-            print(f"\n📊 Estatísticas:")
-            for key, value in stats.items():
-                print(f"  {key}: {value}")
-            continue
-        elif user_input.lower() == 'history':
-            from weblocal.models import User
-            user = User(id=int(user_id.replace("user_", "")) if "user_" in user_id else 1, 
-                       first_name="Interactive", last_name="User")
-            context = weblocal.get_conversation_context(user, limit=10)
-            print(f"\n📝 Histórico:\n{context}")
-            continue
-        
-        if not user_input:
-            continue
+        try:
+            choice = input("\nEscolha uma opção (1-4): ").strip()
             
-        # Criar payload e processar
-        payload = PayloadBuilder.create_text_payload(user_id, user_input)
-        result = weblocal.respond_and_send_message(payload)
-        
-        if result['status'] == 'processed':
-            print(f"🤖 Agente: {result['response_text']}")
-        else:
-            print(f"❌ Erro: {result.get('error', 'Unknown error')}")
+            if choice == "1":
+                teste_simples()
+            elif choice == "2":
+                teste_completo()
+            elif choice == "3":
+                interactive_chat()
+            elif choice == "4":
+                print("Tchau!")
+                break
+            else:
+                print("❌ Opção inválida. Escolha entre 1-4.")
+                
+        except KeyboardInterrupt:
+            print("\n\nPrograma interrompido pelo usuário.")
+            break
+        except Exception as e:
+            logger.error(f"Erro na função main: {e}", exc_info=True)
+            print(f"❌ Erro: {e}")
 
 if __name__ == "__main__":
-    teste_simples()
-    teste_completo()
-    #interactive_chat()
+    main()
 
