@@ -2,8 +2,8 @@
 import uuid
 import time
 
-from channel.models import Audio, Change, Entry, Image, Payload, Value, Text
-from channel.models import Message
+from weblocal.models import Audio, Change, Entry, Image, Payload, Value, Text
+from weblocal.models import Message
 
 # Classe helper para criar payloads locais facilmente
 class PayloadBuilder:

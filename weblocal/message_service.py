@@ -1,6 +1,6 @@
 import time
 from typing import Dict, Optional
-from channel.models import Payload, Message, Audio, Image, User
+from weblocal.models import Payload, Message, Audio, Image, User
 from service import ConversationService
 from models import MessageData, MessageOwner
 

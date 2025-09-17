@@ -1,5 +1,5 @@
-from channel.helpers import PayloadBuilder
-from channel.message_service import MessageService
+from weblocal.helpers import PayloadBuilder
+from weblocal.message_service import MessageService
 from db import DatabaseConfig
 from repository import ConversationRepository
 from service import ConversationService
@@ -94,7 +94,7 @@ def teste_completo():
     
     # Exemplo 6: Verificar histórico de conversação
     print("6. Verificando histórico da conversa...")
-    from channel.models import User
+    from weblocal.models import User
     user = User(id=123, first_name="Local", last_name="User")
     context = message_service.get_conversation_context(user, limit=5)
     print(f"Contexto da conversa:\n{context}\n")
@@ -133,7 +133,7 @@ def interactive_chat():
                 print(f"  {key}: {value}")
             continue
         elif user_input.lower() == 'history':
-            from channel.models import User
+            from weblocal.models import User
             user = User(id=int(user_id.replace("user_", "")) if "user_" in user_id else 1, 
                        first_name="Interactive", last_name="User")
             context = message_service.get_conversation_context(user, limit=10)
