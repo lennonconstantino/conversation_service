@@ -34,8 +34,8 @@ class ConversationStatus(Enum):
 @dataclass
 class MessageData:
     """Classe para estruturar dados da mensagem antes da persistência"""
-    type: str
     message: str
+    type: str
     timestamp: datetime = field(default_factory=datetime.now)
     owner: MessageOwner = MessageOwner.USER
     meta: Optional[Dict[str, Any]] = None

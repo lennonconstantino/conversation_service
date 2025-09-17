@@ -13,7 +13,7 @@ functions_meta
             ConversationService(session)
 
     respond_and_send_message
-        get_conversation_context
+        get_conversation_context.        # será que isso faz sentido????
             ConversationService(session)
             
 
@@ -22,21 +22,97 @@ service = ConversationService(session)
 messages = service.get_conversation_history(phone_number, limit)
 
 weblab {
+    def __init__(self, repository: ):
+        self.repository.
+
     receive_message() {
-        save_request(type.USER)
+        save_request(type.USER, 
+            client_hub=client_hub,
+            message_content=user_message,
+            message_type=message_type,
+            meta=message_meta)
     }
 
     respond_message() {
-        save_response(type.AGENT)
+        save_response(type.AGENT, client_hub=client_hub, response=message_content, message_type=message_type,
+            meta={
+                "whatsapp_message_id": response_json.get("messages", [{}])[0].get("id"),
+                "template_used": template,
+                "status_code": response.status_code
+            })
     }
 
     receive_and_respond_message(user_message: str
-        , user: User
+        , user: str
         , message_type: str = "text"
         , message_meta: Dict[str, Any] = None) {
-            
+
         receive_message()
-        respond_message()
+
+            # Get conversation context
+            conversation_context = get_conversation_context(user.phone, limit=5)
+            
+            # Enhanced message with context
+            enhanced_message = user_message
+            if conversation_context:
+                enhanced_message = f"Context:\n{conversation_context}\n\nNew message: {user_message}"
+            
+            # Get agent response (simplified for testing)
+            response = f"Thanks for your message: '{user_message}'. I'm here to help!"
+
+
+        response = respond_message()
+
+        print(f"Processed conversation for {response}")
+    }
+
+    save_request(owner: MessageOwner, client_hub: str, message: str, message_type: str = "text", meta: Dict[str, Any] = None, channel: str) {
+        """Save message to database"""
+        session = get_db_session()
+        try:
+            service = ConversationService(session)
+            
+            message_data = MessageData(
+                type=message_type,
+                message=message_content,
+                owner=MessageOwner.USER,
+                meta=meta or {}
+            )
+            
+            conversation, is_new = service.get_or_create_conversation(phone_number, channel=channel)
+            service.add_message(conversation.conversation_uuid, message_data)
+            
+        except Exception as e:
+            print(f"Error saving user message: {e}")
+            session.rollback()
+        finally:
+            session.close()
+    }
+
+    save_response(owner: MessageOwner, client_hub: str, response: str, message_type: str = "text", agent_type: str, meta: Dict[str, Any] = None, channel: str) {
+        """Save response to database"""
+        session = get_db_session()
+        try:
+            service = ConversationService(session)
+            
+            message_data = MessageData(
+                type=message_type,
+                message=response,
+                owner=owner,
+                meta={
+                    "agent_type": agent_type,
+                    **(meta or {})
+                }
+            )
+            
+            conversation, is_new = service.get_or_create_conversation(phone_number, channel=channel)
+            service.add_message(conversation.conversation_uuid, message_data)
+            
+        except Exception as e:
+            print(f"Error saving agent response: {e}")
+            session.rollback()
+        finally:
+            session.close()        
     }
 }
 
