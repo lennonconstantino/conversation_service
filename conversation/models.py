@@ -14,6 +14,7 @@ class MessageOwner(Enum):
     AGENT = "agent"
     TEAM = "team"
     USER = "user"  # Adicionado para mensagens do usuário
+    SYSTEM_AGENT = "system_agent"
 
 class MessageType(Enum):
     """Enum para tipos de mensagem"""

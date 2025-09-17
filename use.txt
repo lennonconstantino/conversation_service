@@ -1,6 +1,13 @@
 cd conversation_service
+
+# Iniciar o servidor (mesmo comando)
 uvicorn whatsapp.server:app --host 0.0.0.0 --port 5001 --reload
 
+# Ou usar o script existente
+python -m uvicorn whatsapp.server:app --host 0.0.0.0 --port 5001 --reload
+
+cd conversation_service;
+cd whatsapp; 
 python whatsapp_tester.py message "Test message"
 
 ############
