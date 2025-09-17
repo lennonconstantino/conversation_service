@@ -1,6 +1,5 @@
 from channel.helpers import PayloadBuilder
 from channel.message_service import MessageService
-from channel.weblab import Weblab
 from db import DatabaseConfig
 from repository import ConversationRepository
 from service import ConversationService
@@ -12,16 +11,14 @@ def teste_simples():
     db = DatabaseConfig("sqlite", db_path="conversations.db")
     repository = ConversationRepository(db)
     service = ConversationService(repository)
-    weblab = Weblab(service)
     message_service = MessageService(service)
 
     user = "lennon"
     text_payload = PayloadBuilder.create_text_payload(
-        user_id="user_123",
+        user_id=user,
         message_text="Olá! Como você está?"
     )
-    #response = weblab.receive_and_respond_message("weblocal", "teste_hub", "Hello!!!", user, "text")
-    #response = message_service.process_local_message(text_payload)
+
     response = message_service.receive_and_respond_message(text_payload)
 
     print(f"Processed conversation for user: {user}, response: {response}")
