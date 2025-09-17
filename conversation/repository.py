@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
@@ -6,8 +5,8 @@ from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
-from db import DatabaseConfig, Base
-from models import Conversation, ConversationConfig, ConversationStatus, Message, MessageData, MessageType
+from conversation.db import DatabaseConfig, Base
+from conversation.models import Conversation, ConversationConfig, ConversationStatus, Message, MessageData, MessageType
 
 class ConversationRepository:
     """Serviço para gerenciar conversas e mensagens"""

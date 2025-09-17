@@ -1,9 +1,9 @@
 from typing import Any, Dict, List, Optional, Tuple
-from models import MessageData
-from repository import ConversationRepository
+from conversation.models import MessageData
+from conversation.repository import ConversationRepository
 
 
-class ConversationService:
+class ConversationService():
     """Serviço para gerenciar conversas e mensagens"""
     
     def __init__(self, repository: ConversationRepository):

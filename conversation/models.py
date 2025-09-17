@@ -7,7 +7,7 @@ from sqlalchemy import Boolean, Column, Integer, String, DateTime, Text, Foreign
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 
-from db import Base
+from conversation.db import Base
 
 class MessageOwner(Enum):
     """Enum para identificar o proprietário da mensagem"""

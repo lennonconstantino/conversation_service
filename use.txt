@@ -1,0 +1,8 @@
+cd conversation_service
+uvicorn whatsapp.server:app --host 0.0.0.0 --port 5001 --reload
+
+python whatsapp_tester.py message "Test message"
+
+############
+
+python -m conversation.main

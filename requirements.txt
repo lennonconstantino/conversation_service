@@ -2,3 +2,7 @@ sqlalchemy
 openai
 python-dotenv
 pydantic
+fastapi
+typing_extensions
+requests
+uvicorn
