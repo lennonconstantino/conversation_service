@@ -1,0 +1,163 @@
+
+server
+    get_user_conversations
+        ConversationService(session)
+
+functions_meta
+    send_whatsapp_message
+        save_agent_response
+            ConversationService(session)
+
+    respond_and_send_message
+        save_user_message
+            ConversationService(session)
+
+    respond_and_send_message
+        get_conversation_context
+            ConversationService(session)
+            
+
+session = get_db_session()
+service = ConversationService(session)
+messages = service.get_conversation_history(phone_number, limit)
+
+weblab {
+    receive_message() {
+        save_request(type.USER)
+    }
+
+    respond_message() {
+        save_response(type.AGENT)
+    }
+
+    receive_and_respond_message(user_message: str
+        , user: User
+        , message_type: str = "text"
+        , message_meta: Dict[str, Any] = None) {
+            
+        receive_message()
+        respond_message()
+    }
+}
+
+
+
+def save_user_message(phone_number: str, message_content: str, message_type: str = "text", meta: Dict[str, Any] = None, channel: str = "whatsapp"):
+    """Save user message to database"""
+    session = get_db_session()
+    try:
+        service = ConversationService(session)
+        
+        message_data = MessageData(
+            type=message_type,
+            message=message_content,
+            owner=MessageOwner.USER,
+            meta=meta or {}
+        )
+        
+        conversation, is_new = service.get_or_create_conversation(phone_number, channel=channel)
+        service.add_message(conversation.conversation_uuid, message_data)
+        
+    except Exception as e:
+        print(f"Error saving user message: {e}")
+        session.rollback()
+    finally:
+        session.close()
+
+
+def save_agent_response(phone_number: str, response: str, message_type: str = "text", 
+                       agent_type: str = "relationships", meta: Dict[str, Any] = None, channel: str = "whatsapp"):
+    """Save agent response to database"""
+    session = get_db_session()
+    try:
+        service = ConversationService(session)
+        
+        message_data = MessageData(
+            type=message_type,
+            message=response,
+            owner=MessageOwner.AGENT,
+            meta={
+                "agent_type": agent_type,
+                **(meta or {})
+            }
+        )
+        
+        conversation, is_new = service.get_or_create_conversation(phone_number, channel=channel)
+        service.add_message(conversation.conversation_uuid, message_data)
+        
+    except Exception as e:
+        print(f"Error saving agent response: {e}")
+        session.rollback()
+    finally:
+        session.close()
+
+
+def get_conversation_context(phone_number: str, limit: int = 10) -> str:
+    """Get conversation context for agent"""
+    session = get_db_session()
+    try:
+        service = ConversationService(session)
+        messages = service.get_conversation_history(phone_number, limit)
+        
+        context_lines = []
+        for msg in messages:
+            owner_label = "User" if msg.owner == MessageOwner.USER else "Agent"
+            context_lines.append(f"{owner_label}: {msg.message}")
+        
+        return "\n".join(context_lines) if context_lines else ""
+        
+    except Exception as e:
+        print(f"Error getting conversation context: {e}")
+        return ""
+    finally:
+        session.close()
+
+
+#### INUTIL...
+# Admin endpoints
+@app.route('/admin/conversations/<phone_number>', methods=['GET'])
+def get_user_conversations(phone_number):
+    """Get user conversation history"""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        
+        session = get_db_session()
+        service = ConversationService(session)
+        messages = service.get_conversation_history(phone_number, limit)
+        
+        conversation_data = []
+        for msg in messages:
+            # Convert metadata to JSON-serializable format
+            metadata = {}
+            if hasattr(msg, 'metadata') and msg.metadata:
+                try:
+                    # If metadata is already a dict, use it directly
+                    if isinstance(msg.metadata, dict):
+                        metadata = msg.metadata
+                    else:
+                        # Convert other types to string representation
+                        metadata = {"data": str(msg.metadata)}
+                except:
+                    metadata = {}
+            
+            conversation_data.append({
+                "id": str(msg.id),
+                "type": msg.type.value,
+                "message": msg.message,
+                "timestamp": msg.timestamp.isoformat(),
+                "owner": msg.owner.value,
+                "channel": getattr(msg, 'channel', 'whatsapp'),
+                "metadata": metadata
+            })
+        
+        session.close()
+        
+        return jsonify({
+            "phone_number": phone_number,
+            "messages": conversation_data,
+            "total": len(conversation_data)
+        })
+        
+    except Exception as e:
+        print(f"Conversation history error: {e}")  # Debug print
+        return jsonify({"error": str(e)}), 500
