@@ -13,9 +13,16 @@ def teste_simples():
     repository = ConversationRepository(db)
     service = ConversationService(repository)
     weblab = Weblab(service)
+    message_service = MessageService(service)
 
     user = "lennon"
-    response = weblab.receive_and_respond_message("weblocal", "teste_hub", "Hello!!!", user, "text")
+    text_payload = PayloadBuilder.create_text_payload(
+        user_id="user_123",
+        message_text="Olá! Como você está?"
+    )
+    #response = weblab.receive_and_respond_message("weblocal", "teste_hub", "Hello!!!", user, "text")
+    #response = message_service.process_local_message(text_payload)
+    response = message_service.receive_and_respond_message(text_payload)
 
     print(f"Processed conversation for user: {user}, response: {response}")
 
@@ -35,7 +42,7 @@ def teste_completo():
         message_text="Olá! Como você está?"
     )
     
-    result = message_service.process_local_message(text_payload)
+    result = message_service.receive_and_respond_message(text_payload)
     print(f"Status: {result['status']}")
     print(f"Resposta: {result.get('response_text', 'N/A')}")
     print(f"Tempo: {result.get('processing_time_ms', 0)}ms\n")
@@ -47,7 +54,7 @@ def teste_completo():
         message_text="Preciso de ajuda com um problema técnico"
     )
     
-    result2 = message_service.process_local_message(text_payload2)
+    result2 = message_service.receive_and_respond_message(text_payload2)
     print(f"Status: {result2['status']}")
     print(f"Resposta: {result2.get('response_text', 'N/A')}")
     print(f"UUID da conversa: {result2.get('conversation_uuid', 'N/A')}\n")
@@ -60,7 +67,7 @@ def teste_completo():
         mime_type="audio/ogg"
     )
     
-    result3 = message_service.process_local_message(audio_payload)
+    result3 = message_service.receive_and_respond_message(audio_payload)
     print(f"Status: {result3['status']}")
     print(f"Resposta: {result3.get('response_text', 'N/A')}\n")
     
@@ -72,7 +79,7 @@ def teste_completo():
         mime_type="image/jpeg"
     )
     
-    result4 = message_service.process_local_message(image_payload)
+    result4 = message_service.receive_and_respond_message(image_payload)
     print(f"Status: {result4['status']}")
     print(f"Resposta: {result4.get('response_text', 'N/A')}\n")
     
@@ -83,7 +90,7 @@ def teste_completo():
         message_text="Primeira mensagem de um novo usuário!"
     )
     
-    result5 = message_service.process_local_message(new_user_payload)
+    result5 = message_service.receive_and_respond_message(new_user_payload)
     print(f"Status: {result5['status']}")
     print(f"Nova conversa: {result5.get('conversation_uuid', 'N/A')}")
     print(f"Resposta: {result5.get('response_text', 'N/A')}\n")
@@ -141,7 +148,7 @@ def interactive_chat():
             
         # Criar payload e processar
         payload = PayloadBuilder.create_text_payload(user_id, user_input)
-        result = message_service.process_local_message(payload)
+        result = message_service.receive_and_respond_message(payload)
         
         if result['status'] == 'processed':
             print(f"🤖 Agente: {result['response_text']}")
@@ -149,7 +156,7 @@ def interactive_chat():
             print(f"❌ Erro: {result.get('error', 'Unknown error')}")
 
 if __name__ == "__main__":
-    #teste_simples()
+    teste_simples()
     teste_completo()
     #interactive_chat()
 

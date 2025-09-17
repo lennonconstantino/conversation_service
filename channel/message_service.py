@@ -126,8 +126,7 @@ class MessageService:
 
     def save_request(self, user: User, owner: MessageOwner, channel: str, client_hub: str, message: str, message_type: str, meta: Dict = None):
         """Salva a mensagem do usuário no sistema de conversação"""
-        if user:
-            client_hub = f"user_{user.id}"
+        client_hub = f"user_{user.id}"
         
         # Criar dados da mensagem
         message_data = MessageData(
@@ -156,10 +155,9 @@ class MessageService:
         print(f"Mensagem salva: {message[:50]}...")
         return conversation_uuid, message_dict
     
-    def save_response(self, user: User, owner: MessageOwner, channel: str, client_hub: str, response: str, message_type: str, agent_type: str, meta: Dict = None):
+    def save_response(self, user: User, owner: MessageOwner, channel: str, client_hub: str, response: str, message_type: str, agent_type: str = "local_agent" , meta: Dict = None):
         """Salva a resposta do agente no sistema de conversação"""
-        if user:
-            client_hub = f"user_{user.id}"
+        client_hub = f"user_{user.id}"
         
         # Criar dados da resposta
         message_data = MessageData(
@@ -220,12 +218,13 @@ class MessageService:
         print(f"Mensagem recebida de {user.first_name} {user.last_name}: {message_content}")
         
         # Salvar mensagem do usuário
-        conversation_uuid, user_message_dict = self.save_message(
-            owner=MessageOwner.USER,
+        conversation_uuid, user_message_dict = self.save_request(
             user=user,
-            message_content=message_content,
-            message_type=message.type,
+            owner=MessageOwner.USER,
             channel=channel,
+            client_hub="todo",
+            message=message_content,
+            message_type=message.type,
             meta={"original_message_id": message.id}
         )
         
@@ -234,10 +233,12 @@ class MessageService:
         
         # Salvar resposta do agente
         agent_message_dict = self.save_response(
-            owner=MessageOwner.AGENT,
             user=user,
-            response=response,
+            owner=MessageOwner.AGENT,
             channel=channel,
+            client_hub="todo",
+            message_type=message.type,
+            response=response,
             meta={"response_to": message.id}
         )
         
