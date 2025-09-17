@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 
 from conversation.db import Base
+from conversation.config import ConversationConfig
 
 class MessageOwner(Enum):
     """Enum para identificar o proprietário da mensagem"""
@@ -42,28 +43,16 @@ class MessageData:
     meta: Optional[Dict[str, Any]] = None
     closes_conversation: bool = False  # Flag para indicar se a mensagem encerra a conversa
     channel: Optional[str] = "whatsapp"
-
-class ConversationConfig:
-    """Configurações para gestão de conversas"""
-    DEFAULT_IDLE_TIMEOUT_MINUTES = 2
-    AGENT_CLOSE_KEYWORDS = [
-        "conversa encerrada",
-        "atendimento finalizado", 
-        "pode fechar o atendimento",
-        "obrigado pelo contato",
-        "até a próxima",
-        "/close",
-        "/end"
-    ]
     
-    @classmethod
-    def is_closing_message(cls, message: str, owner: MessageOwner) -> bool:
-        """Verifica se a mensagem deve encerrar a conversa"""
-        if owner != MessageOwner.AGENT:
-            return False
+    def __post_init__(self):
+        """Validação pós-inicialização"""
+        if not ConversationConfig.validate_message_length(self.message):
+            raise ValueError(f"Message too long. Max length: {ConversationConfig.MAX_MESSAGE_LENGTH}")
         
-        message_lower = message.lower().strip()
-        return any(keyword in message_lower for keyword in cls.AGENT_CLOSE_KEYWORDS)
+        if not self.message.strip():
+            raise ValueError("Message cannot be empty")
+
+# ConversationConfig movido para conversation/config.py
 
 class Conversation(Base):
     """Modelo de conversa para persistência no banco de dados"""
