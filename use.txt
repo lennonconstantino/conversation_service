@@ -5,4 +5,4 @@ python whatsapp_tester.py message "Test message"
 
 ############
 
-python -m conversation.main
+python -m weblocal.weblocal_tester
