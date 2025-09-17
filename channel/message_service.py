@@ -228,10 +228,14 @@ class MessageService:
             meta={"original_message_id": message.id}
         )
         
-        # Gerar resposta
+        #
+        # Gerar resposta sem LLM
+        # 
         response = self.generate_response(message_content, user)
         
-        # Salvar resposta do agente
+        #
+        # Salvar resposta do agente fake
+        # 
         agent_message_dict = self.save_response(
             user=user,
             owner=MessageOwner.AGENT,
